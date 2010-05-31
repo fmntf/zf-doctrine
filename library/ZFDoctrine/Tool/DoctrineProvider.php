@@ -122,16 +122,16 @@ class ZFDoctrine_Tool_DoctrineProvider extends Zend_Tool_Project_Provider_Abstra
     public function buildProject($force = false, $load=false, $reload=false)
     {
         if ($reload) {
-            $this->dropDatabase($force);
+            $this->dropDb($force);
         }
-        $this->createDatabase();
+        $this->createDb();
         $this->createTables();
         if ($load) {
             $this->loadData(false);
         }
     }
 
-    public function createDatabase()
+    public function createDb()
     {
         $doctrine = $this->_getDoctrineRegistry();
         
@@ -151,7 +151,7 @@ class ZFDoctrine_Tool_DoctrineProvider extends Zend_Tool_Project_Provider_Abstra
         }
     }
 
-    public function dropDatabase($force = false)
+    public function dropDb($force = false)
     {
         if ($force == false) {
             $confirmed = $this->_registry
@@ -249,7 +249,7 @@ class ZFDoctrine_Tool_DoctrineProvider extends Zend_Tool_Project_Provider_Abstra
         $this->_print('Destination Directory: ' . $fixtureDir);
     }
 
-    public function generateModelsFromYaml()
+    public function generateModelsYaml()
     {
         $doctrine = $this->_getDoctrineRegistry();
         $this->_loadDoctrineModels();
@@ -277,7 +277,7 @@ class ZFDoctrine_Tool_DoctrineProvider extends Zend_Tool_Project_Provider_Abstra
         return $import;
     }
 
-    public function generateYamlFromModels()
+    public function generateYamlModels()
     {
         $this->_loadDoctrineModels();
 
@@ -288,7 +288,7 @@ class ZFDoctrine_Tool_DoctrineProvider extends Zend_Tool_Project_Provider_Abstra
         $this->_print('Destination Directory: ' . $yamlDir);
     }
 
-    public function generateYamlFromDatabase()
+    public function generateYamlDb()
     {
         $this->_initDoctrineResource();
 
@@ -299,47 +299,55 @@ class ZFDoctrine_Tool_DoctrineProvider extends Zend_Tool_Project_Provider_Abstra
         $this->_print('Destination Directory: ' . $yamlDir);
     }
 
-    public function generateMigration($className=null, $fromDatabase=false, $fromModels=false)
+    public function generateMigration($className)
+    {
+        $migratePath = $this->_getMigrationsDirectoryPath();
+
+        Doctrine_Core::generateMigrationClass($className, $migratePath);
+
+        $this->_print('Successfully generated migration class '.$className.'.', array('color' => 'green'));
+        $this->_print('Destination Directory: '.$migratePath);
+    }
+
+    public function generateMigrationsDb()
     {
         $migrationsPath = $this->_getMigrationsDirectoryPath();
 
-        if ($className) {
-            Doctrine_Core::generateMigrationClass($className, $migratePath);
+	$this->_initDoctrineResource();
 
-            $this->_print('Successfully generated migration class '.$className.'.', array('color' => 'green'));
-            $this->_print('Destination Directory: '.$migratePath);
-        } else if ($fromDatabase) {
-            $this->_initDoctrineResource();
+	$yamlSchemaPath = $this->_getYamlDirectoryPath();
+	$migration = new Doctrine_Migration($migrationsPath);
+	$result1 = false;
+	if ( ! count($migration->getMigrationClasses())) {
+	    $result1 = Doctrine_Core::generateMigrationsFromDb($migrationsPath);
+	}
+	$connections = array();
+	foreach (Doctrine_Manager::getInstance() as $connection) {
+	    $connections[] = $connection->getName();
+	}
+	$changes = Doctrine_Core::generateMigrationsFromDiff($migrationsPath, $connections, $yamlSchemaPath);
+	$numChanges = count($changes, true) - count($changes);
+	$result = ($result1 || $numChanges) ? true:false;
 
-            $yamlSchemaPath = $this->_getYamlDirectoryPath();
-            $migration = new Doctrine_Migration($migrationsPath);
-            $result1 = false;
-            if ( ! count($migration->getMigrationClasses())) {
-                $result1 = Doctrine_Core::generateMigrationsFromDb($migrationsPath);
-            }
-            $connections = array();
-            foreach (Doctrine_Manager::getInstance() as $connection) {
-                $connections[] = $connection->getName();
-            }
-            $changes = Doctrine_Core::generateMigrationsFromDiff($migrationsPath, $connections, $yamlSchemaPath);
-            $numChanges = count($changes, true) - count($changes);
-            $result = ($result1 || $numChanges) ? true:false;
-
-            if ($result) {
-                $this->_print('Generated migration classes from the database successfully.');
-            } else {
-                throw new Exception('Could not generate migration classes from database');
-            }
-        } else if ($fromModels) {
-            $this->_loadDoctrineModels();
-
-            Doctrine_Core::generateMigrationsFromModels($migrationsPath, null);
-
-            $this->_print('Generated migration classes from the model successfully.');
-        }
+	if ($result) {
+	    $this->_print('Generated migration classes from the database successfully.');
+	} else {
+	    throw new Exception('Could not generate migration classes from database');
+	}
     }
 
-    public function executeMigration($toVersion = null)
+    public function generateMigrationsModels()
+    {
+        $migrationsPath = $this->_getMigrationsDirectoryPath();
+
+	$this->_loadDoctrineModels();
+
+	Doctrine_Core::generateMigrationsFromModels($migrationsPath, null);
+
+	$this->_print('Generated migration classes from the model successfully.');
+    }
+
+    public function migrate($toVersion = null)
     {
         $this->_initDoctrineResource();
 
